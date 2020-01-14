@@ -12,6 +12,8 @@
 
 namespace py = pybind11;
 
+template <typename... Args>
+using overload_cast_ = py::detail::overload_cast_impl<Args...>;
 
 class PyAbstractMap : public AbstractMap{
 public:
@@ -33,13 +35,15 @@ Point_3 Wrapper_point_3(double x,double y,double z)
        return Point_3(x,y,z);
 }
 
-
+//TODO: set default arguments
 
 PYBIND11_MODULE(SVMTK, m) {
 
     py::class_<Point_3>(m, "Point_3")
        .def(py::init<double,double,double>())
-       .def("x", &Point_3::x);
+       .def("x", &Point_3::x)
+       .def("y", &Point_3::y)
+       .def("z", &Point_3::z);
        
     py::class_<AbstractMap,PyAbstractMap> abstractmap(m,"AbstractMap");
 
@@ -92,7 +96,7 @@ PYBIND11_MODULE(SVMTK, m) {
         .def("save", &Surface::save)
         .def("split_edges", &Surface::split_edges)
         .def("extension", &Surface::cylindric_extension)
-
+        .def("strictly_inside", &Surface::strictly_inside )
         //.def("load", &Surface::load)//
         .def("separate_narrow_gaps", &Surface::seperate_narrow_gaps)
         .def("reconstruct", &Surface::reconstruct)
@@ -115,13 +119,14 @@ PYBIND11_MODULE(SVMTK, m) {
 
         .def("get_boundary", &Domain::get_boundary)
 
+        .def("lloyd", &Domain::lloyd,     py::arg("time_limit")=0, py::arg("max_iteration_number")=0, py::arg("convergence")=0.02, py::arg("freeze_bound")=0.01,py::arg("do_freeze")=true)
+        .def("odt", &Domain::odt,         py::arg("time_limit")=0, py::arg("max_iteration_number")=0, py::arg("convergence")=0.02, py::arg("freeze_bound")=0.01,py::arg("do_freeze")=true)
+        .def("exude", &Domain::exude,     py::arg("time_limit")=0, py::arg("sliver_bound")=0)
+        .def("perturb", &Domain::perturb, py::arg("time_limit")=0, py::arg("sliver_bound")=0)
 
-        .def("lloyd", &Domain::lloyd)
-        .def("odt", &Domain::odt)
-        .def("exude", &Domain::exude)
-        .def("perturb", &Domain::perturb)
+        .def("add_sharp_border_edges", (void (Domain::*)(Surface&,double)) &Domain::add_sharp_border_edges, py::arg("surface") , py::arg("threshold")=60 ) 
+        //.def("add_sharp_border_edges", overload_cast_<Surface&,double>()(&Domain::add_sharp_border_edges) ) 
 
-        .def("add_sharp_border_edges", (void (Domain::*)(Surface&,double)) &Domain::add_sharp_border_edges)
         .def("reset_borders", &Domain::reset_borders)
         .def("remove_subdomain", (void (Domain::*)(std::vector<int>)) &Domain::remove_subdomain)
         .def("remove_subdomain", (void (Domain::*)(int)) &Domain::remove_subdomain)
@@ -132,7 +137,7 @@ PYBIND11_MODULE(SVMTK, m) {
         .def("set_features", (void(Domain::*)()) &Domain::set_features) 
         .def("set_features", (void (Domain::*)(Surface&)) &Domain::set_features) 
         .def("add_feature", &Domain::add_feature) 
-        .def("save", &Domain::save); 
+        .def("save", &Domain::save, py::arg("OutPath"), py::arg("save_1Dfeatures")=false); 
        
 
 

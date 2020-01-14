@@ -55,7 +55,7 @@
 #include <CGAL/Delaunay_mesh_size_criteria_2.h>
 #include <CGAL/Polyline_simplification_2/Squared_distance_cost.h>
 #include <CGAL/Polyline_simplification_2/simplify.h> 
-
+#include <CGAL/extract_mean_curvature_flow_skeleton.h>
 //---------------------------------------------------------
 // CGAL- Polygon_mesh_processing polygon_mesh_processing.h
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
@@ -71,13 +71,11 @@
 #include <CGAL/Polygon_mesh_processing/clip.h>
 #include <CGAL/Polygon_mesh_slicer.h>
 
-
 // CGAL accelerated queries
 #include <CGAL/Search_traits_3.h>
 #include <CGAL/Search_traits_adapter.h>
 #include <CGAL/Orthogonal_k_neighbor_search.h>
 #include <CGAL/squared_distance_3.h> 
-
 #include <CGAL/Mesh_polyhedron_3.h>
 #include <CGAL/Poisson_reconstruction_function.h>
 
@@ -217,6 +215,8 @@ void surface_overlapp(Surface& surf1 , Surface& surf2 )
 
 
 }
+
+
 template< typename Surface> 
 void surface_overlapp(Surface& surf1 , Surface& surf2 , Surface& domain)
 {
@@ -374,7 +374,7 @@ class Surface
     Surface(const std::string  filename);
     ~Surface(){}
 
-    // ----CSG--------------------
+    // ----CSG-------------------- overload with Point_3 ?? 
     void make_cone_( double x0, double y0, double  z0,  double x1, double y1, double z1, double r0, int number_of_segments=360) ;
     void make_cylinder( double x0, double y0, double  z0,  double x1, double y1, double z1,       double radius,  int number_of_segments=360) ;
     void make_cone(     double x0, double y0, double  z0,  double x1, double y1, double z1, double r0,double r1,  int number_of_segments=360) ; 
@@ -452,8 +452,7 @@ class Surface
                           double average_spacing_ratio = 5.0);
 
 
-
-
+    void strictly_inside(Surface& other);
 
     template<typename Implicit_function>  
     void implicit_surface(Implicit_function implicit_function,
@@ -472,6 +471,36 @@ class Surface
 
 };
 
+
+void Surface::strictly_inside(Surface& other)
+{  
+     // white.(pial)
+     //  explanation :
+     // Find all vertices of surface (this->mesh) that are outside Surface(other) and
+     // move them so that all vertices are inside Surface (other)
+
+     std::map< vertex_descriptor, double> map1; 
+     vertex_vector points = this->get_vertices(); // white pointa
+   
+     points  = other.outside(*this,points); // pial(white,points)
+
+     int iter=0;
+     while (  !points.empty() )
+     {
+            map1 = this->shortest_edge_map(points,-0.1); 
+            this->adjusting_boundary_region(map1.begin() ,map1.end());
+            //this->smooth_taubin_region(points.begin(), points.end(),2);   
+            points = other.outside(*this,points);
+            std::cout << points.size() << std::endl;
+            if (iter++>=300)
+            {
+              break;
+            }
+
+     }
+     
+     
+}
 Surface::vertex_vector Surface::closest_points(Point_3 p1, int num)
 {
    Vertex_point_pmap vppmap = get(CGAL::vertex_point,mesh);
@@ -980,7 +1009,7 @@ Surface::vertex_vector Surface::get_vertices()
 Surface::vertex_vector Surface::inside(Surface &other, Surface::vertex_vector &vertices)
 {
    vertex_vector result;
-   Surface::Inside inside_poly2(mesh);
+   Surface::Inside inside_poly2(mesh); // remove? 
 
    for ( vertex_descriptor v_it : vertices )
    {
@@ -996,8 +1025,9 @@ Surface::vertex_vector Surface::inside(Surface &other, Surface::vertex_vector &v
 
 Surface::vertex_vector Surface::outside(Surface &other,Surface::vertex_vector &vertices)
 {
+   // TODO: BETTER STRUCTURE
    vertex_vector result;
-   Surface::Inside inside_poly2(mesh);
+   Surface::Inside inside_poly2(mesh); // remove ??
    for ( vertex_descriptor v_it : vertices )
    {
       CGAL::Bounded_side res = inside_poly2(other.get_mesh().point(v_it));
@@ -1030,45 +1060,143 @@ void Surface::make_cube( double x0, double y0, double  z0,  double x1, double y1
      assert(y0!=y1);
      assert(z0!=z1);
 
-     Mesh m;
-     vertex_descriptor v0 = m.add_vertex(Point_3(x0,y0,z0));
-     vertex_descriptor v1 = m.add_vertex(Point_3(x0,y0,z1));
-     vertex_descriptor v2 = m.add_vertex(Point_3(x1,y0,z0));
+     double t1 =0.5*(x1+x0); 
+     double t2 =0.5*(y1+y0);
+     double t3 =0.5*(z1+z0);
 
-     vertex_descriptor v3 = m.add_vertex(Point_3(x1,y0,z1));
-     vertex_descriptor v4 = m.add_vertex(Point_3(x1,y1,z0));
-     vertex_descriptor v5 = m.add_vertex(Point_3(x1,y1,z1));
-     vertex_descriptor v6 = m.add_vertex(Point_3(x0,y1,z0));
-     vertex_descriptor v7 = m.add_vertex(Point_3(x0,y1,z1));
-  
-        // Side 1
-      m.add_face(v0, v2, v1);
-      m.add_face(v3, v1, v2);
+     vertex_descriptor v0 = mesh.add_vertex(Point_3(x0,y0,z0));
+     vertex_descriptor v1 = mesh.add_vertex(Point_3(t1,y0,z0));
+     vertex_descriptor v2 = mesh.add_vertex(Point_3(x1,y0,z0));
+     vertex_descriptor v3 = mesh.add_vertex(Point_3(x0,y0,t3));
+     vertex_descriptor v4 = mesh.add_vertex(Point_3(t1,y0,t3));
+     vertex_descriptor v5 = mesh.add_vertex(Point_3(x1,y0,t3));
+     vertex_descriptor v6 = mesh.add_vertex(Point_3(x0,y0,z1));
+     vertex_descriptor v7 = mesh.add_vertex(Point_3(t1,y0,z1));
+     vertex_descriptor v8 = mesh.add_vertex(Point_3(x1,y0,z1));
 
-        // Side 2
-      m.add_face(v3 ,v2, v5);
-      m.add_face(v4 ,v5,v2);
+     vertex_descriptor v9  = mesh.add_vertex(Point_3(x1,t2,z0));
+     vertex_descriptor v10 = mesh.add_vertex(Point_3(x1,y1,z0));
+     vertex_descriptor v11 = mesh.add_vertex(Point_3(x1,t2,t3));
+     vertex_descriptor v12 = mesh.add_vertex(Point_3(x1,y1,t3));
+     vertex_descriptor v13 = mesh.add_vertex(Point_3(x1,t2,z1));
+     vertex_descriptor v14 = mesh.add_vertex(Point_3(x1,y1,z1));
 
-        // Side 3 
-      m.add_face(v4, v6, v5);
-      m.add_face(v7, v5, v6);
+     vertex_descriptor v15 = mesh.add_vertex(Point_3(t1,y1,z0));
+     vertex_descriptor v16 = mesh.add_vertex(Point_3(x0,y1,z0));
+     vertex_descriptor v17 = mesh.add_vertex(Point_3(t1,y1,t3));
+     vertex_descriptor v18 = mesh.add_vertex(Point_3(x0,y1,t3));
+     vertex_descriptor v19 = mesh.add_vertex(Point_3(t1,y1,z1));
+     vertex_descriptor v20 = mesh.add_vertex(Point_3(x0,y1,z1));
 
-        // Side 4
-      m.add_face(v0, v1, v6);
-      m.add_face(v7, v6, v1);
-
-        // Side 5 
-      m.add_face(v3, v5, v1);
-      m.add_face(v7, v1, v5);
-
-        // Side 6 
-      m.add_face(v0, v6, v2);
-      m.add_face(v4, v2, v6);
-
-      this->mesh = m;
+     vertex_descriptor v21 = mesh.add_vertex(Point_3(x0,t2,z0));
+     vertex_descriptor v22 = mesh.add_vertex(Point_3(x0,t2,t3));
+     vertex_descriptor v23 = mesh.add_vertex(Point_3(x0,t2,z1));
+    
+     vertex_descriptor v24 = mesh.add_vertex(Point_3(t1,t2,z0));
+     vertex_descriptor v25 = mesh.add_vertex(Point_3(t1,t2,z1));
 
 
 
+
+
+     face_vector s1;  // Side 1
+     s1.push_back(mesh.add_face(v1, v4, v0));
+     s1.push_back(mesh.add_face(v0, v4, v3));
+     s1.push_back(mesh.add_face(v3, v7, v6));
+     s1.push_back(mesh.add_face(v3, v4, v7));
+     s1.push_back(mesh.add_face(v7, v4, v8));
+     s1.push_back(mesh.add_face(v8, v4, v5));
+     s1.push_back(mesh.add_face(v5, v4, v1));
+     s1.push_back(mesh.add_face(v2, v5, v1));
+
+     face_vector s2;     // Side 2
+     s2.push_back(mesh.add_face(v2, v11, v5 ));
+     s2.push_back(mesh.add_face(v5, v11, v13));
+     s2.push_back(mesh.add_face(v5, v13, v8));
+     s2.push_back(mesh.add_face(v13,v11, v14));
+     s2.push_back(mesh.add_face(v14,v11, v12));
+     s2.push_back(mesh.add_face(v12,v11, v9));
+     s2.push_back(mesh.add_face(v10,v12, v9));
+     s2.push_back(mesh.add_face(v9,v11 , v2 ));
+
+     face_vector s3;        // Side 3 
+     s3.push_back(mesh.add_face(v10, v17, v12));
+     s3.push_back(mesh.add_face(v12, v17, v19));
+     s3.push_back(mesh.add_face(v12, v19, v14));
+     s3.push_back(mesh.add_face(v19, v17, v20));
+     s3.push_back(mesh.add_face(v20, v17, v18));
+     s3.push_back(mesh.add_face(v18, v17, v15));
+     s3.push_back(mesh.add_face(v16, v18, v15));
+     s3.push_back(mesh.add_face(v15, v17, v10));
+
+
+     face_vector s4;        // Side 4
+     s4.push_back(mesh.add_face(v0, v3, v21));
+     s4.push_back(mesh.add_face(v3, v22, v21));
+     s4.push_back(mesh.add_face(v21,v22, v16));
+     s4.push_back(mesh.add_face(v16,v22, v18));
+     s4.push_back(mesh.add_face(v18,v22, v23));
+     s4.push_back(mesh.add_face(v18,v23, v20));
+     s4.push_back(mesh.add_face(v6,v22, v3));
+     s4.push_back(mesh.add_face(v23, v22, v6));
+
+     face_vector s5;   // Side 5 
+     s5.push_back(mesh.add_face(v0, v24, v1));
+     s5.push_back(mesh.add_face(v21, v24, v0));
+     s5.push_back(mesh.add_face(v15, v21, v16));
+     s5.push_back(mesh.add_face(v15, v24, v21));
+     s5.push_back(mesh.add_face(v10, v24, v15));
+     s5.push_back(mesh.add_face(v9, v24, v10));
+     s5.push_back(mesh.add_face(v1, v24, v9));
+     s5.push_back(mesh.add_face(v1, v9, v2));
+
+     face_vector s6; // Side 6 
+     s6.push_back(mesh.add_face(v7, v25, v6));
+     s6.push_back(mesh.add_face(v6, v25, v23));
+     s6.push_back(mesh.add_face(v23, v25, v19));
+     s6.push_back(mesh.add_face(v20, v23, v19));
+     s6.push_back(mesh.add_face(v19, v25, v14));
+     s6.push_back(mesh.add_face(v14, v25, v13));
+     s6.push_back(mesh.add_face(v13, v25, v7));
+     s6.push_back(mesh.add_face(v13, v7, v8));
+
+     
+/*     double edge_length = std::min((x1-x0),std::min((y1-y0),(z1-z0)))/10.0; 
+     std::cout << edge_length << std::endl;
+
+
+     CGAL::Polygon_mesh_processing::isotropic_remeshing(s1,
+                              edge_length,
+                              mesh,
+                              CGAL::Polygon_mesh_processing::parameters::number_of_iterations(5)
+                              .protect_constraints(true));
+    CGAL::Polygon_mesh_processing::isotropic_remeshing(s2,
+                              edge_length,
+                              mesh,
+                              CGAL::Polygon_mesh_processing::parameters::number_of_iterations(5)
+                              .protect_constraints(true));
+    CGAL::Polygon_mesh_processing::isotropic_remeshing(s3,
+                              edge_length,
+                              mesh,
+                              CGAL::Polygon_mesh_processing::parameters::number_of_iterations(5)
+                              .protect_constraints(true));
+    CGAL::Polygon_mesh_processing::isotropic_remeshing(s4,
+                              edge_length,
+                              mesh,
+                              CGAL::Polygon_mesh_processing::parameters::number_of_iterations(5)
+                              .protect_constraints(true));
+ 
+    CGAL::Polygon_mesh_processing::isotropic_remeshing(s5,
+                              edge_length,
+                              mesh,
+                              CGAL::Polygon_mesh_processing::parameters::number_of_iterations(5)
+                              .protect_constraints(true));
+    CGAL::Polygon_mesh_processing:: isotropic_remeshing(s6,
+                              edge_length,
+                              mesh,
+                              CGAL::Polygon_mesh_processing::parameters::number_of_iterations(5)
+                              .protect_constraints(true));
+ */
 }
 
 
@@ -1089,7 +1217,6 @@ void Surface::make_cone_( double x0, double y0, double  z0,  double x1, double y
         
      Index vb, vt;
   
-
      double n0 = x1-x0, n1 = y1-y0, n2 = z1-z0;
 
      double l1 = std::sqrt(n0*n0+n1*n1+n2*n2);
@@ -1135,11 +1262,6 @@ void Surface::make_cone_( double x0, double y0, double  z0,  double x1, double y
                               mesh,
                               CGAL::Polygon_mesh_processing::parameters::number_of_iterations(3)
                               .protect_constraints(true));
-
-   
-
-
-
 
 
 }

@@ -14,9 +14,9 @@ if __name__ == "__main__":
 
 
 
-   sf.add("0001",1)
-   sf.add("0011",2)  
-   sf.add("0111",3) 
+   sf.add("1000",1)
+   sf.add("1100",2)  
+   sf.add("1110",3) 
    sf.add("1111",4) 
    sf.print()
    maker = svm.Domain(s,sf)
